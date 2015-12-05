@@ -1,0 +1,140 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+"""
+passget
+
+This will pull a password from the pass encryptor and push it to the Xclipboard.
+Uses Python3 and PyQt5.
+
+Author: Doc Ocassi <dococassi@boukom.com>
+License: BSD 2-Clause Lecense.
+
+"""
+
+import sys, os, subprocess
+from PyQt5.QtCore import Qt, QCoreApplication, QStringListModel
+from PyQt5.QtWidgets import QApplication, QDialog, QPushButton, QHBoxLayout, QLineEdit, QCompleter
+
+
+class PassLine(QLineEdit):
+    
+    def __init__(self):
+        super().__init__()
+        
+        self.initUI()
+        
+        
+    def initUI(self):      
+        self.setMinimumWidth(400)
+        self.passDir = os.getenv("HOME") + "/.password-store/"
+        
+        self.model = QStringListModel(self.getPasswords())
+        self.model.sort(0)
+
+        self.completer = QCompleter()
+        self.completer.setModel(self.model)
+        self.completer.setFilterMode(Qt.MatchContains)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.setCompleter(self.completer)
+        self.textChanged.connect(self.changed)
+ 
+        self.show()
+
+    def getPasswords(self):
+        passwords = []
+        for root, dirs, files in os.walk(self.passDir):
+            if len(root) == len(self.passDir): root = ""
+            if files != []:
+                path = root[len(self.passDir)-1:len(root)]
+                for file in files:
+                    if file.endswith(".gpg"):
+                        passwords.append(path[1:len(path)] + "/" + file[0:-4])
+        return passwords 
+   
+    def function(self, arg1):
+       pass
+
+    def changed(self):
+         
+        if self.completer.currentRow() == 0 and self.completer.completionPrefix() != self.text() or self.completer.currentCompletion() == self.text() :
+            self.parentWidget().btn_GetPass.setEnabled(True)
+        else:
+            self.parentWidget().btn_GetPass.setEnabled(False)
+
+
+    def keyPressEvent(self, e):
+        key = e.key()
+        
+        ispass = self.parentWidget().btn_GetPass.isEnabled()
+
+        # Escape will cancel the password retrieval
+        if key == Qt.Key_Escape:
+            self.parentWidget().evCancel()
+            QCoreApplication.instance().quit()
+        
+        # Return will action the password retrieval
+        elif key == Qt.Key_Return and ispass:
+            super().keyPressEvent(e)
+            self.parentWidget().evPass()
+
+        # Tab 
+        elif key == Qt.Key_Tab and not ispass:
+            print("Tab")
+            super().keyPressEvent(e)
+
+        # Else pass to super for key processing.
+        else:
+            super().keyPressEvent(e)
+        
+        
+class PassGet(QDialog):
+
+    def __init__(self):
+        super().__init__()
+        
+        self.setModal(True)
+
+        self.initUI()
+        
+        
+    def initUI(self):   
+        self.setWindowTitle('PassGet')
+        self.btn_GetPass = QPushButton("Get Pass")
+        self.btn_Cancel = QPushButton("Cancel")
+
+        self.cmb_Passes = PassLine()
+
+        self.btn_GetPass.clicked.connect(self.evPass)            
+        self.btn_GetPass.setEnabled(False)
+        self.btn_Cancel.clicked.connect(self.evCancel)            
+
+        hbox = QHBoxLayout()
+        hbox.addWidget(self.cmb_Passes)
+        hbox.addWidget(self.btn_GetPass)
+        hbox.addWidget(self.btn_Cancel)
+        self.setLayout(hbox)
+
+        self.show()
+
+
+    def textToClipboard(self, passname):
+        # "primary":
+        passcmd = subprocess.Popen(["pass", passname], stdout=subprocess.PIPE)
+        xselcmd = subprocess.Popen(["xsel", "-pi"], stdin=passcmd.stdout)
+        xselcmd.communicate()
+
+    def evPass(self):
+        self.textToClipboard(self.cmb_Passes.text())
+        QCoreApplication.instance().quit()        
+
+    def evCancel(self):
+        QCoreApplication.instance().quit()
+
+
+if __name__ == '__main__':
+    
+    app = QApplication(sys.argv)
+    ex = PassGet()
+    sys.exit(app.exec_())
+
